@@ -1,4 +1,9 @@
-"""Tetris game implemented with pygame."""
+"""Tetris game implemented with pygame.
+
+Uses a custom bitmap font renderer so that pygame.font is NOT required.
+This avoids compatibility issues with Python 3.14+ where pygame.font
+may fail to import.
+"""
 
 import random
 import sys
@@ -78,6 +83,84 @@ PIECE_NAMES = list(SHAPES.keys())
 
 # Scoring (original Nintendo-style)
 LINE_SCORES = {0: 0, 1: 100, 2: 300, 3: 500, 4: 800}
+
+
+# ---------------------------------------------------------------------------
+# Bitmap font — each glyph is a 5-wide x 7-tall pixel pattern
+# ---------------------------------------------------------------------------
+
+_GLYPHS: dict[str, list[str]] = {
+    "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+    "C": ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
+    "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+    "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+    "F": ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+    "G": ["01110", "10001", "10000", "10111", "10001", "10001", "01110"],
+    "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "I": ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+    "J": ["00111", "00010", "00010", "00010", "10010", "10010", "01100"],
+    "K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+    "L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+    "M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+    "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+    "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+    "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+    "Q": ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+    "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+    "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+    "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+    "U": ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+    "V": ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+    "W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
+    "X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+    "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+    "Z": ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+    "0": ["01110", "10011", "10101", "10101", "10101", "11001", "01110"],
+    "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+    "2": ["01110", "10001", "00001", "00110", "01000", "10000", "11111"],
+    "3": ["01110", "10001", "00001", "00110", "00001", "10001", "01110"],
+    "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+    "5": ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
+    "6": ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+    "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+    "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+    "9": ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
+    " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+    ":": ["00000", "00100", "00100", "00000", "00100", "00100", "00000"],
+    "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+    ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+    ",": ["00000", "00000", "00000", "00000", "00000", "00100", "01000"],
+}
+
+
+def _draw_text(
+    surface: pygame.Surface,
+    text: str,
+    x: int,
+    y: int,
+    color: tuple[int, int, int],
+    scale: int = 2,
+) -> None:
+    """Render *text* at (x, y) using the bitmap font with given pixel scale."""
+    cursor_x = x
+    for ch in text.upper():
+        glyph = _GLYPHS.get(ch)
+        if glyph is None:
+            cursor_x += 6 * scale  # treat unknown as space
+            continue
+        for row_idx, row_bits in enumerate(glyph):
+            for col_idx, bit in enumerate(row_bits):
+                if bit == "1":
+                    px = cursor_x + col_idx * scale
+                    py = y + row_idx * scale
+                    pygame.draw.rect(surface, color, (px, py, scale, scale))
+        cursor_x += 6 * scale  # 5 px wide + 1 px gap
+
+
+def _text_width(text: str, scale: int = 2) -> int:
+    return len(text) * 6 * scale
+
 
 # ---------------------------------------------------------------------------
 # Helper classes
@@ -173,6 +256,17 @@ def draw_block(surface: pygame.Surface, row: int, col: int, color: tuple, x_offs
     pygame.draw.line(surface, darker, (x, y + CELL - 1), (x + CELL - 1, y + CELL - 1))
 
 
+def _draw_block_abs(surface: pygame.Surface, px: int, py: int, color: tuple) -> None:
+    """Draw a single block at absolute pixel position."""
+    pygame.draw.rect(surface, color, (px, py, CELL, CELL))
+    lighter = tuple(min(c + 50, 255) for c in color)
+    pygame.draw.line(surface, lighter, (px, py), (px + CELL - 1, py))
+    pygame.draw.line(surface, lighter, (px, py), (px, py + CELL - 1))
+    darker = tuple(max(c - 60, 0) for c in color)
+    pygame.draw.line(surface, darker, (px + CELL - 1, py), (px + CELL - 1, py + CELL - 1))
+    pygame.draw.line(surface, darker, (px, py + CELL - 1), (px + CELL - 1, py + CELL - 1))
+
+
 def draw_board(surface: pygame.Surface, board: list[list[str | None]]) -> None:
     for r in range(ROWS):
         for c in range(COLS):
@@ -211,86 +305,67 @@ def draw_ghost(surface: pygame.Surface, board: list[list[str | None]], piece: Pi
             pygame.draw.rect(surface, ghost_color, (x + 1, y + 1, CELL - 2, CELL - 2), 1)
 
 
-def draw_sidebar(surface: pygame.Surface, score: int, level: int, lines: int, next_piece: Piece, font: pygame.font.Font) -> None:
+def draw_sidebar(surface: pygame.Surface, score: int, level: int, lines: int, next_piece: Piece) -> None:
     x0 = COLS * CELL + 20
 
     # Score
-    lbl = font.render("SCORE", True, WHITE)
-    surface.blit(lbl, (x0, 20))
-    val = font.render(str(score), True, WHITE)
-    surface.blit(val, (x0, 50))
+    _draw_text(surface, "SCORE", x0, 20, WHITE, scale=2)
+    _draw_text(surface, str(score), x0, 40, WHITE, scale=2)
 
     # Level
-    lbl = font.render("LEVEL", True, WHITE)
-    surface.blit(lbl, (x0, 100))
-    val = font.render(str(level), True, WHITE)
-    surface.blit(val, (x0, 130))
+    _draw_text(surface, "LEVEL", x0, 80, WHITE, scale=2)
+    _draw_text(surface, str(level), x0, 100, WHITE, scale=2)
 
     # Lines
-    lbl = font.render("LINES", True, WHITE)
-    surface.blit(lbl, (x0, 180))
-    val = font.render(str(lines), True, WHITE)
-    surface.blit(val, (x0, 210))
+    _draw_text(surface, "LINES", x0, 140, WHITE, scale=2)
+    _draw_text(surface, str(lines), x0, 160, WHITE, scale=2)
 
     # Next piece
-    lbl = font.render("NEXT", True, WHITE)
-    surface.blit(lbl, (x0, 280))
+    _draw_text(surface, "NEXT", x0, 220, WHITE, scale=2)
 
     preview_cells = SHAPES[next_piece.name][0]
+    color = PIECE_COLORS[next_piece.name]
     for dr, dc in preview_cells:
-        draw_block(surface, dr, dc, PIECE_COLORS[next_piece.name], x_offset=x0 + 10 - (0 * CELL) + dc * 0)
-        # Redraw with correct offset
         px = x0 + 10 + dc * CELL
-        py = 320 + dr * CELL
-        color = PIECE_COLORS[next_piece.name]
-        pygame.draw.rect(surface, color, (px, py, CELL, CELL))
-        lighter = tuple(min(c + 50, 255) for c in color)
-        pygame.draw.line(surface, lighter, (px, py), (px + CELL - 1, py))
-        pygame.draw.line(surface, lighter, (px, py), (px, py + CELL - 1))
-        darker = tuple(max(c - 60, 0) for c in color)
-        pygame.draw.line(surface, darker, (px + CELL - 1, py), (px + CELL - 1, py + CELL - 1))
-        pygame.draw.line(surface, darker, (px, py + CELL - 1), (px + CELL - 1, py + CELL - 1))
+        py = 250 + dr * CELL
+        _draw_block_abs(surface, px, py, color)
 
-    # Controls hint
-    hint_font = pygame.font.SysFont("monospace", 14)
+    # Controls hint (smaller scale)
     controls = [
         "CONTROLS:",
-        "← →  Move",
-        "↑    Rotate",
-        "↓    Soft drop",
-        "Space Hard drop",
-        "P    Pause",
-        "R    Restart",
+        "  MOVE",
+        "  ROTATE",
+        "  SOFT DROP",
+        "SPACE HARD DROP",
+        "P PAUSE",
+        "R RESTART",
     ]
     for i, line in enumerate(controls):
-        txt = hint_font.render(line, True, DARK_GRAY)
-        surface.blit(txt, (x0, 450 + i * 20))
+        _draw_text(surface, line, x0, 400 + i * 18, DARK_GRAY, scale=1)
 
 
-def draw_game_over(surface: pygame.Surface, font: pygame.font.Font) -> None:
+def draw_game_over(surface: pygame.Surface) -> None:
     overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 150))
     surface.blit(overlay, (0, 0))
 
-    big = pygame.font.SysFont("monospace", 48, bold=True)
-    txt = big.render("GAME OVER", True, WHITE)
-    rect = txt.get_rect(center=(COLS * CELL // 2, SCREEN_H // 2 - 30))
-    surface.blit(txt, rect)
+    text = "GAME OVER"
+    tw = _text_width(text, scale=4)
+    _draw_text(surface, text, COLS * CELL // 2 - tw // 2, SCREEN_H // 2 - 40, WHITE, scale=4)
 
-    small = font.render("Press R to restart", True, WHITE)
-    rect2 = small.get_rect(center=(COLS * CELL // 2, SCREEN_H // 2 + 30))
-    surface.blit(small, rect2)
+    text2 = "PRESS R TO RESTART"
+    tw2 = _text_width(text2, scale=2)
+    _draw_text(surface, text2, COLS * CELL // 2 - tw2 // 2, SCREEN_H // 2 + 20, WHITE, scale=2)
 
 
-def draw_pause(surface: pygame.Surface, font: pygame.font.Font) -> None:
+def draw_pause(surface: pygame.Surface) -> None:
     overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 150))
     surface.blit(overlay, (0, 0))
 
-    big = pygame.font.SysFont("monospace", 48, bold=True)
-    txt = big.render("PAUSED", True, WHITE)
-    rect = txt.get_rect(center=(COLS * CELL // 2, SCREEN_H // 2))
-    surface.blit(txt, rect)
+    text = "PAUSED"
+    tw = _text_width(text, scale=4)
+    _draw_text(surface, text, COLS * CELL // 2 - tw // 2, SCREEN_H // 2 - 14, WHITE, scale=4)
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +478,6 @@ def main() -> None:
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("Tetris")
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont("monospace", 22, bold=True)
 
     game = Game()
 
@@ -473,12 +547,12 @@ def main() -> None:
         if not game.game_over:
             draw_ghost(screen, game.board, game.current)
             draw_piece(screen, game.current)
-        draw_sidebar(screen, game.score, game.level, game.lines, game.next, font)
+        draw_sidebar(screen, game.score, game.level, game.lines, game.next)
 
         if game.game_over:
-            draw_game_over(screen, font)
+            draw_game_over(screen)
         elif game.paused:
-            draw_pause(screen, font)
+            draw_pause(screen)
 
         pygame.display.flip()
 
